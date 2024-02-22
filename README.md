@@ -1,9 +1,9 @@
 # Example for m2m and user authentication using API Gateway integration pattern and Verified Permissions as a policy store
 Simple example of m2m and user auth flow with API GW, Cognito and Verified Permissions
 
-ocumentation is all WIP
+Documentation is all WIP and will be updated as needed
 
-Solution Topology - refer to APIGW-Cognito-Verified-Permissions-0.2.drawio document 
+
 
 Steps to install:
 1. Create a Cognito client and Microsoft Entra ID Enterprise Application following Steps in https://aws.amazon.com/blogs/security/5. how-to-set-up-amazon-cognito-for-federated-authentication-using-azure-ad/
@@ -13,3 +13,13 @@ Steps to install:
 5. [TODO, currently still being adapted] Deploy a Cloudformation template SampleVerifiedPermissionsSetup-CFN-template.yaml using parameters from p1, p.3 and p.4.
 6. Confirm correct deployment and Lambda codes.
 7. Use test_send_to_APIGW.py for testing
+
+
+Solution Topology (also refer to APIGW-Cognito-Verified-Permissions-0.2.drawio file in the Schemes directory)
+
+User Flow
+
+
+
+
+M2m Flow
