@@ -2,6 +2,10 @@
 Simple example of m2m and user auth flow with API GW, Cognito and Verified Permissions
 Documentation is all WIP and will be updated as needed
 
+# Original Intent
+
+Sample solution is aiming to demonstrate how API Gateway integration pattern for microservices could be extended with a centralized AuthZ policy store - Verified Permissions.
+Both user and m2m (service) authentication and authorization are using the same mechanisms (Cognito and Verified Permissions), simplifying policy management and policy enforcement for heterogenious use-cases.
 
 
 ## Steps to install
