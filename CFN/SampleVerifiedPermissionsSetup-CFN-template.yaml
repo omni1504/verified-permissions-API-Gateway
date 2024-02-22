@@ -1,0 +1,318 @@
+---
+Metadata:
+  TemplateId: "template-example-apigw-integration-pattern-with-cognito-verifiedpermissions"
+Parameters:
+  LambdaCodeS3Bucket:
+    Type: "String"
+    Description: "An Amazon S3 bucket in the same AWS-Region as your function. The\
+      \ bucket can be in a different AWS-account.\nThis property can be replaced with\
+      \ other exclusive properties"
+  LambdaSimpleHTTPResponseCodeS3Key:
+    Type: "String"
+    Description: "The Amazon S3 key of the deployment package.\nThis property can\
+      \ be replaced with other exclusive properties"
+    Default:  "LambdaSimpleHTTPResponseCode.zip"
+  LambdaAuthorizerCodeS3Key:
+    Type: "String"
+    Description: "The Amazon S3 key of the deployment package.\nThis property can\
+      \ be replaced with other exclusive properties"
+    Default: "LambdaAuthorizerCode.zip"
+  Boto3LambdaLayerArn:
+    Type: "String"
+    Description: "ARN of the Lambda Layer supplied with the package"
+  CognitoUserPoolId:
+    Type: "String"
+    Description: "Cognito User Pool ID"
+  AzureADGroup:
+    Type: "String"
+    Description: "AzureADGroup ID used in Verified Permissions Policy"
+    Default: "0cb385f2-621f-4f69-8ffd-ecc7cd255d11"
+  M2MOauthScope:
+    Type: "String"
+    Description: "Oauth Scope used in m2m App Client"
+    Default: "SampleResourceServer/m2m-service1"
+
+Resources:
+  VerifiedPermissionPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: 'VerifiedPermissionPolicy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AccessToVerifiedPermissions
+            Effect: Allow
+            Action:
+              - 'verifiedpermissions:IsAuthorized'
+            Resource:
+              - !Sub 'arn:aws:verifiedpermissions::${AWS::AccountId}:policy-store/${VerifiedPermissionsPolicyStore}'
+      Roles:
+        - !Ref LambdaAuthorizerRole
+  LambdaAuthorizerRole:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/service-role/"
+      ManagedPolicyArns:
+      #- !GetAtt VerifiedPermissionPolicy.Arn 
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      MaxSessionDuration: 3600
+      RoleName: "LambdaAuthorizer-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Action: "sts:AssumeRole"
+          Effect: "Allow"
+          Principal:
+            Service: "lambda.amazonaws.com"
+  LambdaAuthorizer:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::Lambda::Function"
+    Properties:
+      MemorySize: 128
+      Description: ""
+      TracingConfig:
+        Mode: "PassThrough"
+      Timeout: 3
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: "Auto"
+      Handler: "lambda_function.lambda_handler"
+      Code:
+        S3Bucket:
+          Ref: "LambdaCodeS3Bucket"
+        S3Key:
+          Ref: "LambdaAuthorizerCodeS3Key"
+      Role:
+        Fn::GetAtt:
+        - "LambdaAuthorizerRole"
+        - "Arn"
+      FileSystemConfigs: []
+      FunctionName: "LambdaAuthorizer"
+      Runtime: "python3.10"
+      PackageType: "Zip"
+      LoggingConfig:
+        LogFormat: "Text"
+        LogGroup: "/aws/lambda/LambdaAuthorizer"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          POLICY_STORE_ID: !Ref VerifiedPermissionsPolicyStore
+      EphemeralStorage:
+        Size: 512
+      Layers:
+      - !Ref Boto3LambdaLayerArn
+      Architectures:
+      - "x86_64"
+  VerifiedPermissionsPolicyStore:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::VerifiedPermissions::PolicyStore"
+    Properties:
+      ValidationSettings:
+        Mode: "STRICT"
+      Description: "SamplePolicyStore"
+      Schema:
+        CedarJson: "{\"SampleAPIGWAuthorization\":{\"actions\":{\"UpdatePath\":{\"\
+          appliesTo\":{\"resourceTypes\":[\"Path\"],\"context\":{\"type\":\"Record\"\
+          ,\"attributes\":{}},\"principalTypes\":[\"User\"]}},\"ReadPath\":{\"appliesTo\"\
+          :{\"resourceTypes\":[\"Path\"],\"principalTypes\":[\"User\"],\"context\"\
+          :{\"attributes\":{},\"type\":\"Record\"}}},\"DeletePath\":{\"appliesTo\"\
+          :{\"resourceTypes\":[\"Path\"],\"context\":{\"attributes\":{},\"type\":\"\
+          Record\"},\"principalTypes\":[\"User\"]}}},\"entityTypes\":{\"User\":{\"\
+          shape\":{\"type\":\"Record\",\"attributes\":{\"adgroups\":{\"required\"\
+          :false,\"type\":\"String\"},\"sub\":{\"required\":true,\"type\":\"String\"\
+          },\"scope\":{\"required\":true,\"type\":\"String\"},\"profile\":{\"type\"\
+          :\"String\",\"required\":false},\"email\":{\"required\":false,\"type\":\"\
+          String\"}}},\"memberOfTypes\":[]},\"Path\":{\"shape\":{\"type\":\"Record\"\
+          ,\"attributes\":{}},\"memberOfTypes\":[]}}}}"
+  UserVerifiedPermissionsStaticPolicy:
+    Type: AWS::VerifiedPermissions::Policy
+    Properties:
+      PolicyStoreId: !Ref VerifiedPermissionsPolicyStore
+      Definition:
+        Static:
+          Description: "Sample policy for user - filtering on adgroup"
+          Statement: !Sub "permit(principal,action,resource) when {principal has adgroups && principal.adgroups  == \"${AzureADGroup}\"};"
+  M2MVerifiedPermissionsStaticPolicy:
+    Type: AWS::VerifiedPermissions::Policy
+    Properties:
+      PolicyStoreId: !Ref VerifiedPermissionsPolicyStore
+      Definition:
+        Static:
+          Description: "Sample policy for m2m - filtering on scope"
+          Statement: !Sub "permit(principal,action,resource) when {principal.scope  == \"${M2MOauthScope}\"};"
+  LambdaSimpleHTTPResponse:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::Lambda::Function"
+    Properties:
+      MemorySize: 128
+      Description: "A starter AWS Lambda function."
+      TracingConfig:
+        Mode: "PassThrough"
+      Timeout: 3
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: "Auto"
+      Handler: "lambda_function.lambda_handler"
+      Code:
+        S3Bucket:
+          Ref: "LambdaCodeS3Bucket"
+        S3Key:
+          Ref: "LambdaSimpleHTTPResponseCodeS3Key"
+      Role:
+        Fn::GetAtt:
+        - "LambdaSimpleHTTPResponseRole"
+        - "Arn"
+      FileSystemConfigs: []
+      FunctionName: "LambdaSimpleHTTPResponse"
+      Runtime: "python3.10"
+      PackageType: "Zip"
+      LoggingConfig:
+        LogFormat: "Text"
+        LogGroup: "/aws/lambda/LambdaSimpleHTTPResponse"
+      EphemeralStorage:
+        Size: 512
+      Tags:
+      - Value: "hello-world-python"
+        Key: "lambda-console:blueprint"
+      Architectures:
+      - "x86_64"
+  APIGatewayAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: APIGatewayAuthorizer
+      RestApiId: !Ref ApiGatewayRestApi
+      Type: TOKEN
+      IdentitySource: method.request.header.Authorization
+      AuthorizerResultTtlInSeconds: 300
+      AuthorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaAuthorizer}/invocations"
+      IdentityValidationExpression: "Bearer [^\\s]+"
+
+  LambdaAuthorizerPermission:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName:
+        Fn::GetAtt:
+        - "LambdaAuthorizer"
+        - "Arn"
+      Action: "lambda:InvokeFunction"
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/authorizers/${APIGatewayAuthorizer}'
+      Principal: "apigateway.amazonaws.com"
+
+  LambdaSimpleHTTPResponsePermission:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName:
+        Fn::GetAtt:
+        - "LambdaSimpleHTTPResponse"
+        - "Arn"
+      Action: "lambda:InvokeFunction"
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*/GET/getprotected'
+      Principal: "apigateway.amazonaws.com"
+  LambdaSimpleHTTPResponseRole:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/service-role/"
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      MaxSessionDuration: 3600
+      RoleName: "LambdaSimpleHTTPResponse-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Action: "sts:AssumeRole"
+          Effect: "Allow"
+          Principal:
+            Service: "lambda.amazonaws.com"
+  ApiGatewayRestApi:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      ApiKeySourceType: "HEADER"
+      Description: "Sample API gateway for user- and m2m-based authentication using\
+        \ Verified Permissions"
+      EndpointConfiguration:
+        Types:
+        - "REGIONAL"
+      DisableExecuteApiEndpoint: false
+      Name: "SampleAPIVerifiedPermissions"
+  GetProtected:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ParentId: !GetAtt 
+        - ApiGatewayRestApi
+        - RootResourceId
+      PathPart: getprotected
+  
+  OptionsMethod: 
+    Type: AWS::ApiGateway::Method 
+    Properties: 
+      ApiKeyRequired: false
+      RestApiId: !Ref ApiGatewayRestApi 
+      ResourceId: !Ref GetProtected 
+      HttpMethod: OPTIONS 
+      AuthorizationType: NONE 
+      Integration: 
+        IntegrationResponses: 
+          - StatusCode: 200 
+            ResponseParameters: 
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'" 
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'" 
+              method.response.header.Access-Control-Allow-Origin: "'*'" 
+            ResponseTemplates: 
+              application/json: '' 
+        PassthroughBehavior: WHEN_NO_MATCH 
+        RequestTemplates: 
+          application/json: '{"statusCode": 200}' 
+        Type: MOCK 
+      MethodResponses: 
+        - ResponseModels: 
+            application/json: 'Empty' 
+          ResponseParameters: 
+            method.response.header.Access-Control-Allow-Headers: false 
+            method.response.header.Access-Control-Allow-Methods: false 
+            method.response.header.Access-Control-Allow-Origin: false
+          StatusCode: 200 
+
+  GetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      ResourceId: !Ref GetProtected
+      RestApiId: !Ref ApiGatewayRestApi
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref APIGatewayAuthorizer
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaSimpleHTTPResponse.Arn}/invocations"
+
+  ApiGatewayStage:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::ApiGateway::Stage"
+    Properties:
+      RestApiId:
+        Ref: "ApiGatewayRestApi"
+      DeploymentId:
+        Fn::GetAtt:
+        - "ApiGatewayDeployment"
+        - "DeploymentId"
+      StageName: "Dev"
+      CacheClusterSize: "0.5"
+      TracingEnabled: false
+      CacheClusterEnabled: false
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          MetricsEnabled: 'false'
+          DataTraceEnabled: 'false'
+  ApiGatewayDeployment:
+    UpdateReplacePolicy: "Retain"
+    Type: "AWS::ApiGateway::Deployment"
+    DependsOn:
+      - GetMethod
+      - OptionsMethod
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
