@@ -56,7 +56,6 @@ Resources:
       ManagedPolicyArns:
       #- !GetAtt VerifiedPermissionPolicy.Arn 
       - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-      - "arn:aws:iam::aws:policy/AmazonCognitoReadOnly"
       MaxSessionDuration: 3600
       RoleName: "LambdaAuthorizer-role"
       AssumeRolePolicyDocument:
